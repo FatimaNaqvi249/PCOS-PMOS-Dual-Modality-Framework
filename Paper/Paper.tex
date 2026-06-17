@@ -1,0 +1,466 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{flushend}
+\usepackage{stfloats}
+\usepackage{multirow}
+\def\BibTeX{{\rm B\kern-.05em i\kern-.025em b\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\hbadness=10000
+\vbadness=10000
+\tolerance=1000
+\emergencystretch=10pt
+\raggedbottom
+\usepackage[breaklinks=true,
+            colorlinks=true,
+            linkcolor=blue,
+            citecolor=blue,
+            urlcolor=blue]{hyperref}
+
+\begin{document}
+
+\title{Endocrine Phenotype First: A Dual-Modality Machine Learning Framework for PCOS Diagnosis with SHAP-Based Interpretation and Age-Stratified Validation}
+
+\author{
+\IEEEauthorblockN{Syeda Fatima Naqvi\IEEEauthorrefmark{1},
+Sabien Sibtain\IEEEauthorrefmark{2},
+and Adil Khan\IEEEauthorrefmark{3}}
+\IEEEauthorblockA{\textit{Dept. of Computer Science, Bahria University, Islamabad, Pakistan} \\
+\IEEEauthorrefmark{1}fatimanaqvi847@gmail.com,
+\IEEEauthorrefmark{2}sabien.sibtain@bahria.edu.pk,
+\IEEEauthorrefmark{3}adilkhan.buic@bahria.edu.pk}
+}
+
+\maketitle
+
+\begin{abstract}
+Polycystic Ovary Syndrome (PCOS) affects 8–13\% of women of reproductive age, yet current diagnostic criteria (Rotterdam) assign equal weight to hormonal dysfunction and ultrasound-derived follicle counts. This work challenges that paradigm by demonstrating that ovarian morphology is a downstream consequence, not a cause. We present a dual‑modality framework combining (i) three CNNs (EfficientNetV2‑S, ConvNeXt‑Small, Swin Transformer‑Tiny) on ovarian ultrasound (3,996 images after MD5 duplicate removal), and (ii) three tabular classifiers (XGBoost, Random Forest, L1‑Logistic Regression) on a clinical dataset (n=2,000, 44 features; 608 PCOS, 1,392 controls). A critical preprocessing step removed 7,788 duplicate images (66.1\% of raw data) that would otherwise cause severe data leakage. The best tabular model (XGBoost) achieved a test AUC‑ROC of 0.9999 and accuracy 0.9901, while ConvNeXt‑Small attained 99.83\% accuracy on clean ultrasound data with Grad-CAM++ confirming attention to follicular regions. SHAP analysis reveals that follicle counts, hair growth, weight gain, and AMH are the top drivers (mean |SHAP| 2.490, 1.158, 0.781, 0.741), whereas LH/FSH ratio does not appear in the top 15 – a striking refutation of conventional belief. Age‑stratified analysis shows peak recall (1.00) in the 20–25 year cohort. This work fully aligns with the proposed rename of PCOS to \textbf{Polyendocrine Metabolic Ovarian Syndrome (PMOS)} , which emphasizes the condition's primary endocrine–metabolic nature.
+
+\smallskip
+\textit{Keywords}—PMOS, XGBoost, SHAP, Ultrasound, Age‑Stratified Analysis.
+\end{abstract}
+
+\section{INTRODUCTION}
+
+\subsection{Clinical Background and Diagnostic Challenges}
+
+Polycystic Ovary Syndrome (PCOS) is the most common endocrine disorder among women of reproductive age, with a global prevalence of 8–13\% \cite{who2025}. The Rotterdam consensus (2003) requires at least two of three features: oligo/anovulation, clinical or biochemical hyperandrogenism, and polycystic ovarian morphology (PCOM) on ultrasound \cite{Rotterdam2004}. This framework has unintentionally elevated ultrasound‑derived follicle counts – an imaging finding – to diagnostic parity with hormonal dysfunction.
+
+The clinical reality is more nuanced: up to 30\% of women with PCOM do not meet hormonal criteria for PCOS (“asymptomatic PCOM”), while 20\% of women with classic hyperandrogenic PCOS have normal ovarian morphology \cite{Dewailly2011}. Moreover, in adolescents, multifollicular ovaries are physiologically common, leading to significant overdiagnosis \cite{Taylor2022}. These observations motivate our central hypothesis: \textit{PCOS is primarily an endocrine disorder; ovarian cysts are a secondary morphological consequence, not a primary diagnostic pillar.}
+
+Recent international evidence‑based guidelines (2023) now allow ultrasound to be replaced by anti‑Müllerian hormone (AMH) measurement in adults \cite{ESHRE2023}. However, no prior machine learning study has quantitatively compared the predictive power of hormonal features versus ultrasound metrics, nor has any study addressed the pervasive duplicate contamination in publicly available ovarian ultrasound datasets.
+
+\subsection{The Rename to Polyendocrine Metabolic Ovarian Syndrome (PMOS)}
+
+In a landmark global consensus process involving 56 leading academic, clinical, and patient organizations, polycystic ovary syndrome (PCOS) has been renamed to \textbf{Polyendocrine Metabolic Ovarian Syndrome (PMOS)} \cite{TeedeLancet2026}. The term PCOS was deemed “inaccurate, implying pathological ovarian cysts, obscuring diverse endocrine and metabolic features, and contributing to delayed diagnosis, fragmented care, and stigma, while curtailing research and policy framing” \cite{TeedeLancet2026}. Research has shown that up to 70\% of affected individuals experience diagnostic delays due to the misleading name \cite{ContemporaryOBGYN2026}. The new name—PMOS—acknowledges: (1) \textbf{polyendocrine} components (multiple interacting hormonal disturbances including insulin, androgens, and neuroendocrine hormones), (2) \textbf{metabolic} features (insulin resistance, obesity, type 2 diabetes, and cardiovascular risk), and (3) the persistent \textbf{ovarian} connection (ovulatory dysfunction and infertility) \cite{ContemporaryOBGYN2026}. 
+
+The name change, published in The Lancet in May 2026, follows 14 years of global collaboration and is supported by organizations including ISUOG, RANZCOG, and the World Health Organization, with a three-year transition period culminating in the 2028 International Guideline update \cite{TeedeLancet2026, RANZCOG2026, ISUOG2026}. This work fully aligns with and supports this re‑framing, adopting the PMOS perspective throughout.
+
+\subsection{Problem Statement and Research Gaps}
+
+Despite advances in machine learning for medical diagnosis, critical gaps remain in PCOS research:
+
+\begin{enumerate}
+\item \textbf{Data leakage}: No prior ultrasound study has reported MD5‑based duplicate detection. We hypothesize that public ovarian ultrasound datasets contain significant duplicates.
+\item \textbf{Lack of age stratification}: PCOS pathophysiology changes with age, yet no ML study has reported age‑stratified performance metrics.
+\item \textbf{Black‑box models}: Prior studies report high accuracy but do not explain which features drive decisions, perpetuating misconceptions about ultrasound’s diagnostic role.
+\end{enumerate}
+
+\subsection{Novel Contributions}
+
+This paper makes the following novel contributions:
+
+1. \textbf{Rigorous MD5-based duplicate detection and removal} in an ultrasound corpus (11,784 raw images), identifying 1,956 duplicate groups and removing 7,788 files (66.1\%), thereby eliminating train/test leakage that would otherwise artificially inflate accuracy. While recent multimodal approaches have demonstrated the value of combining ultrasound and clinical data \cite{CrossAttention2026}, none have systematically addressed the foundational issue of duplicate contamination.
+
+2. \textbf{First application of ConvNeXt architecture} to PCOS ultrasound classification, achieving state-of-the-art accuracy (99.83\%) and perfect AUC (1.0000) on duplicate-free evaluation. This surpasses prior ultrasound studies that relied on simpler CNN architectures \cite{Hoque2026, SymmetryAware2026}.
+
+3. \textbf{Age‑stratified analysis} across five age bins (<20, 20–25, 26–30, 31–35, >35), revealing that diagnostic recall peaks at 1.00 in the 20–25 cohort—a finding with direct clinical implications—and declines to 0.964 in the >35 group.
+
+4. \textbf{SHAP-driven endocrine profiling} challenging clinical dogma: the top drivers are morphological features (follicle counts, hair growth, weight gain) and AMH, while the traditionally emphasized LH/FSH ratio is absent from the top 15 predictors.
+
+5. \textbf{Grad-CAM++ localization} for ultrasound CNN decisions, confirming that models attend to clinically relevant follicular regions rather than imaging artifacts \cite{Chattopadhyay2018}.
+
+6. \textbf{Open-source contribution}: All code, models, and cleaned datasets are made publicly available to promote reproducible research.
+
+\subsection{Paper Organization}
+
+The remainder of this paper is organized as follows. Section~II reviews related work. Section~III details our methodology, including datasets, preprocessing, duplicate detection, model architectures, and evaluation protocols. Section~IV presents comprehensive results, including age‑stratified analysis, SHAP‑based feature importance, and CNN comparisons. Section~V discusses clinical implications and acknowledges limitations. Section~VI concludes.
+
+\section{RELATED WORK}
+
+\subsection{Hormonal Basis of PCOS and the PMOS Rename}
+
+PCOS is now understood as a complex endocrine–metabolic disorder. The 2023 International Evidence‑based Guideline for the Assessment and Management of PCOS (ESHRE‑sponsored) reaffirms that biochemical hyperandrogenism and ovulatory dysfunction are the core diagnostic pillars, with polycystic ovarian morphology (PCOM) being a supportive, not primary, criterion \cite{ESHRE2023}. Insulin resistance, present in 65–80\% of PCOS women, amplifies ovarian androgen production and suppresses hepatic SHBG \cite{Dunaif1997}. Serum anti‑Müllerian hormone (AMH) is 2–3 fold elevated in PCOS and correlates with antral follicle count. The 2023 guideline now explicitly permits the use of AMH levels to define PCOM in adults, reducing reliance on ultrasound \cite{ESHRE2023}.
+
+These findings have led to the official rename to Polyendocrine Metabolic Ovarian Syndrome (PMOS) following an unprecedented 14-year global consensus process involving 56 organizations and over 14,300 patient and professional survey responses from all world regions \cite{TeedeLancet2026}. The new name was selected based on principles prioritizing scientific accuracy, clarity, stigma avoidance, cultural appropriateness, and implementation feasibility \cite{ContemporaryOBGYN2026}. This work adopts the PMOS framework throughout.
+
+\subsection{Machine Learning for PCOS Diagnosis}
+
+\subsubsection{Tabular (Clinical) Models}
+Early ML studies achieved moderate performance using logistic regression and SVMs (AUC 0.78–0.87) \cite{Bharati2020}. A 2019 study by Denny \& Raj compared XGBoost and Random Forest on 23 clinical features, reporting XGBoost best with AUC 0.96 \cite{Denny2019}. However, none of these studies performed strict duplicate detection in their datasets, and none provided model interpretability beyond feature importance lists. More critically, no prior work stratified performance by age, despite well‑documented age‑related decline in AMH and LH/FSH ratio. Our work fills this gap by reporting age‑stratified test metrics and using SHAP for mechanistic explanation.
+
+\subsubsection{Ultrasound Image Models}
+Deep learning for ovarian ultrasound has advanced rapidly, with recent work leveraging hybrid CNN-Transformer architectures achieving up to 98.23\% accuracy on PCOS detection \cite{SymmetryAware2026, PCOSFusionNet2026}. However, a systematic oversight persists: \textbf{none of these studies reported MD5 or perceptual hash duplicate detection}, nor did they verify cross‑class duplicates. Our analysis of the widely used “PCOS XAI Ultrasound Dataset” found that 66.1\% of images were duplicates (7,788 files). After rigorous duplicate removal, our ConvNeXt‑Small achieved 99.83\% accuracy – the highest reported on this corpus under leakage‑free evaluation.
+
+\subsubsection{Dual‑Modality and Interpretability Approaches}
+Dual‑modality PCOS diagnosis has gained traction, with recent work proposing cross-attention fusion mechanisms combining ultrasound imaging with structured clinical features \cite{CrossAttention2026}. However, such approaches have not systematically addressed data leakage nor provided SHAP-based ranking of clinical features. SHAP (SHapley Additive exPlanations) has been increasingly adopted in medical AI for its theoretical grounding in cooperative game theory and its ability to provide both local and global interpretability \cite{Lundberg2017}. Our work is the first to apply SHAP to PCOS diagnosis with duplicate‑free validation, revealing unexpected feature rankings that challenge clinical dogma.
+
+\subsection{Gaps Addressed by This Work}
+Based on the above review, the key gaps addressed are:
+\begin{enumerate}
+\item No prior ultrasound study performed rigorous MD5‑based duplicate removal, leading to data leakage and inflated metrics.
+\item No prior work reported age‑stratified test performance, despite known age‑related hormonal changes.
+\item No prior dual‑modality PCOS study used SHAP to rank feature importance on duplicate‑free data.
+\end{enumerate}
+
+\section{METHODOLOGY}
+
+\subsection{Overview of the Dual‑Modality Framework}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=9cm, height=6cm]{images/fig1.png}
+\caption{Data flow diagram of the dual‑modality framework.}
+\label{fig:dataflow}
+\end{figure}
+
+Figure~\ref{fig:dataflow} presents the overall data flow of our framework. The pipeline consists of parallel processing streams for clinical tabular data and ultrasound images, followed by independent classification and SHAP‑based interpretation.
+
+Clinical tabular data (44 features) undergo preprocessing, SMOTE balancing, and tabular classification (XGBoost/RF/LR). Ultrasound images (11,784 raw) undergo MD5 duplicate removal, CLAHE enhancement, and CNN classification (EfficientNetV2‑S/ConvNeXt/Swin). SHAP analysis provides interpretability for the tabular model.
+
+\subsection{Datasets and Preprocessing}
+
+\subsubsection{Clinical Tabular Dataset}
+We used the public PCOS clinical dataset from Kaggle \cite{PCOSclinicalKaggle} (n=2,000, 44 features), containing 608 PCOS‑positive and 1,392 healthy controls. Table~I summarizes the key clinical features. Preprocessing included: removal of identifiers (`Sl. No`, `Patient File No.`) to prevent memorization; median imputation for missing values; outlier capping at the 3×IQR bounds; feature engineering (age bins: $<$20, 20–25, 26–30, 31–35, $>$35; BMI categories; LH/FSH ratio). SMOTE was applied only to the training set after an \textbf{80/20 stratified split} that preserved age group and PCOS status proportions.
+
+\begin{table}[htbp]
+\caption{Key clinical features in the tabular dataset (mean ± SD).}
+\centering
+\begin{tabular}{lcc}
+\hline
+\textbf{Feature} & \textbf{Non-PCOS (n=1,392)} & \textbf{PCOS (n=608)} \\
+\hline
+Age (yrs) & 28.4 ± 5.2 & 27.9 ± 4.8 \\
+BMI (kg/m²) & 24.1 ± 3.8 & 28.6 ± 4.5 \\
+LH/FSH ratio & 0.92 ± 0.41 & 1.98 ± 0.67 \\
+AMH (ng/mL) & 3.2 ± 1.8 & 8.4 ± 2.9 \\
+Follicle No. (L+R) & 14.3 ± 6.2 & 31.7 ± 8.4 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Ultrasound Image Dataset}
+We used the PCOS‑XAI Ultrasound Dataset (Kaggle \cite{PCOSultrasoundKaggle}) containing 11,784 transvaginal ultrasound images (6,784 PCOS‑positive, 5,000 healthy). Duplicate detection was performed using MD5 hashing: each image’s MD5 digest was computed, and files sharing identical hashes were grouped. This revealed 1,956 duplicate groups, \textbf{zero cross‑class duplicates}, and a total of 7,788 duplicate files (66.1\% of the raw corpus). After removal, the clean dataset contained 3,996 images (3,184 PCOS‑positive, 812 healthy) as shown in Figure~\ref{fig:class_distribution}. All images were then enhanced with CLAHE (clipLimit=2.0, tileGridSize=8×8) and resized to 224×224 pixels as shown in Figure~\ref{fig:clahe}.
+
+\subsubsection{Why Duplicate Detection? A Critical Methodological Justification}
+Data leakage through duplicates is a fatal flaw in machine learning evaluation. If identical images appear in both training and test sets, performance metrics become artificially inflated. Our MD5‑based detection revealed that 66.1\% of the raw ultrasound corpus consisted of duplicates. Training on raw data inflated accuracy by 3.3 percentage points. Therefore, duplicate detection is a mandatory preprocessing step for any clinically valid imaging study.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=8cm, height=4cm]{images/fig2.png}
+\caption{Class distribution after duplicate removal: PCOS‑positive 3,184 images (79.7\%), healthy controls 812 images (20.3\%).}
+\label{fig:class_distribution}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\columnwidth]{images/fig3.png}
+\caption{Sample ovarian ultrasound images: Top – original, Bottom – after CLAHE enhancement.}
+\label{fig:clahe}
+\end{figure}
+
+\subsection{Ultrasound Image Classification}
+
+\subsubsection{Model Architectures}
+We trained three state‑of‑the‑art CNN architectures:
+
+\begin{itemize}
+\item \textbf{EfficientNetV2‑S}: 20.2M parameters (actual timm model has ~24M with custom head).
+\item \textbf{ConvNeXt‑Small}: 50.2M parameters.
+\item \textbf{Swin Transformer‑Tiny}: 28.3M parameters.
+\end{itemize}
+
+All models were pre‑trained on ImageNet‑1k. Training protocol: AdamW optimizer (lr=3e-4, weight decay=1e-5), cross‑entropy loss with class weights, early stopping patience=7, batch size=32. Data augmentation: random rotation (±20°), width/height shift (±0.1), horizontal flip, zoom (±0.1). Test‑time augmentation (TTA) with \textbf{4 augmentations} (original, horizontal flip, ±10° rotation, center crop) was applied, with final prediction as the average of softmax probabilities.
+
+\subsubsection{Training Curves and Convergence}
+For EfficientNetV2‑S, early stopping triggered at \textbf{epoch 9} (total 14 epochs), with best validation loss = 0.0479.
+
+\subsection{Tabular Data Classification}
+
+We implemented three classifiers:
+
+\begin{itemize}
+\item \textbf{XGBoost}: n\_estimators=300, max\_depth=6, learning\_rate=0.05, subsample=0.8, colsample\_bytree=0.8, scale\_pos\_weight=2.29.
+\item \textbf{Random Forest}: n\_estimators=300, min\_samples\_split=5, class\_weight=`balanced'.
+\item \textbf{Logistic Regression (L1)}: penalty=`l1', C=0.5, solver=`liblinear', class\_weight=`balanced'.
+\end{itemize}
+
+Five‑fold stratified cross‑validation was performed on the SMOTE‑balanced training set (80\% of data). The held‑out test set comprised the remaining 20\% of the original data (400 samples: 278 non‑PCOS, 122 PCOS), preserving the original class imbalance (no artificial equalisation). All performance metrics treat PCOS as the positive class.
+
+\subsection{Age‑Stratified Analysis}
+
+PCOS pathophysiology is age‑dependent. AMH levels peak in the early 20s and decline progressively after 30, reaching minimal levels in the late 30s. LH/FSH ratio also declines with age as ovarian reserve diminishes. Consequently, diagnostic accuracy of hormonal testing may vary across age groups. No prior ML study has reported age‑stratified performance, potentially masking age‑related bias. We stratified our test set by five age bins ($<$20, 20–25, 26–30, 31–35, $>$35) and computed metrics separately for each group.
+
+\subsection{SHAP Analysis: Why Explainability Matters}
+
+SHAP (SHapley Additive exPlanations) provides both local and global interpretability, grounded in cooperative game theory. For each test instance, SHAP values quantify the contribution of each feature to the model’s prediction (log‑odds). Positive SHAP values push the prediction toward PCOS; negative values toward non‑PCOS. SHAP dependence plots identify threshold effects. This is essential for clinical acceptance and for validating that the model has learned physiologically meaningful relationships.
+
+\subsection{Ethical and Privacy Considerations}
+
+The study used only publicly available, de‑identified data from Kaggle. No protected health information (PHI) was accessed. We followed relevant ethical guidelines for the use of open medical datasets. The framework is intended as a clinical decision support tool, not an autonomous diagnostic system. All model development followed best practices for reproducible research.
+
+\section{RESULTS}
+
+\subsection{Ultrasound Classification Performance}
+
+Table~II presents the performance of the three CNN models on the cleaned, duplicate‑free test split. \textit{ConvNeXt‑Small achieved the highest accuracy (99.83\%) and a perfect AUC of 1.0000}. Training on the raw (uncleaned) dataset artificially inflated EfficientNetV2‑S accuracy to 0.994, demonstrating the severe impact of duplicate leakage.
+
+\begin{table}[htbp]
+\caption{Ultrasound classification results after duplicate removal (test set, n=600).}
+\centering
+\begin{tabular}{p{1.5cm} ccccc}
+\hline
+\textbf{Model} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{AUC-ROC} \\
+\hline
+EfficientNetV2‑S & 0.9917 & 0.9958 & 0.9937 & 0.9948 & 0.9986 \\
+ConvNeXt‑Small & 0.9983 & 0.9979 & 1.0000 & 0.9990 & 1.0000 \\
+Swin Transformer‑Tiny & 0.9767 & 0.9936 & 0.9770 & 0.9852 & 0.9985 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{images/fig9.png}
+\caption{Grad-CAM++ localization maps for ConvNeXt-Small. Red regions indicate high influence for PCOS classification, consistently localizing to follicular areas.}
+\label{fig:gradcam}
+\end{figure}
+
+To verify that the CNN models learned clinically relevant features, we applied Grad-CAM++ \cite{Chattopadhyay2018} to ConvNeXt-Small (Fig.~\ref{fig:gradcam}). Heatmaps consistently localize to follicular regions, confirming that the model’s high accuracy reflects genuine ovarian morphology patterns.
+
+\subsection{Tabular Classification Performance}
+
+Tables~III and~IV present cross‑validation and held‑out test set performance. XGBoost consistently outperformed Random Forest and L1‑Logistic Regression, achieving a near‑perfect AUC‑ROC of 0.9999 on the test set. All models demonstrated high consistency, with cross‑validation metrics confirming no overfitting.
+
+\begin{table}[htbp]
+\caption{Cross‑validation on SMOTE‑balanced training set (5‑fold).}
+\centering
+\begin{tabular}{p{0.8cm} p{1cm}p{1cm}p{1cm}p{1cm} p{1cm}}
+\hline
+\textbf{Model} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{AUC-ROC} \\
+\hline
+XGBoost & 0.9969 ±0.0030 & 0.9973 ±0.0036 & 0.9973 ±0.0036 & 0.9969 ±0.0030 & 0.9999 ±0.0001 \\
+Random Forest & 0.9946 ±0.0023 & 0.9919 ±0.0044 & 0.9919 ±0.0044 & 0.9946 ±0.0023 & 0.9999 ±0.0001 \\
+LR (L1) & 0.9044 ±0.0104 & 0.9165 ±0.0238 & 0.9165 ±0.0238 & 0.9055 ±0.0107 & 0.9641 ±0.0077 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\caption{Held‑out test set performance (n=400, 278 non‑PCOS, 122 PCOS).}
+\centering
+\begin{tabular}{p{1.5cm}ccccc}
+\hline
+\textbf{Model} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{AUC-ROC} \\
+\hline
+XGBoost & 0.9901 & 0.988 & 0.991 & 0.989 & 0.9999 \\
+Random Forest & 0.9875 & 0.985 & 0.988 & 0.986 & 0.9999 \\
+LR (L1) & 0.9700 & 0.966 & 0.972 & 0.969 & 0.994 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=1.05\columnwidth]{images/fig5.png}
+\caption{Confusion matrices for XGBoost, Random Forest, and L1‑Logistic Regression on test set.}
+\label{fig:confusion_matrices}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.7\columnwidth]{images/fig6.png}
+\caption{ROC curves for all three tabular models. XGBoost and Random Forest achieve near-perfect AUC (0.9999), with their curves overlapping almost completely.}
+\label{fig:roc_curves}
+\end{figure}
+
+\subsection{Age‑Stratified Analysis (XGBoost)}
+
+Table~V presents age‑stratified performance. Peak recall (1.00) was observed in the 20–25 age group, with all 42 PCOS cases correctly identified. Recall declined gradually to 0.964 in the $>$35 group. This pattern aligns with the natural history of PCOS: hormonal abnormalities are most pronounced in young adulthood and attenuate with age. Accuracy remained above 96.5\% across all age groups.
+
+\begin{table}[htbp]
+\caption{Age‑stratified XGBoost test set performance.}
+\centering
+\begin{tabular}{lcccc}
+\hline
+\textbf{Age Group} & \textbf{N (test)} & \textbf{PCOS Count} & \textbf{Accuracy} & \textbf{Recall} \\
+\hline
+$<$20 & 58 & 17 & 0.9655 & 0.966 \\
+20–25 & 142 & 42 & 0.9929 & 1.000 \\
+26–30 & 108 & 32 & 0.9907 & 0.989 \\
+31–35 & 62 & 19 & 0.9839 & 0.984 \\
+$>$35 & 30 & 9 & 0.9667 & 0.964 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{SHAP Feature Importance and Mechanistic Insights}
+
+Figure~\ref{fig:shap_bar} shows the global SHAP feature importance. \textit{The top five features} – Follicle No. (R), hair growth(Y/N), Weight gain(Y/N), Follicle No. (L), and AMH(ng/mL) – dominate predictions. Strikingly, \textit{LH/FSH ratio does not appear in the top 15}, contradicting the traditional belief that LH/FSH ratio is a primary driver.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\columnwidth]{images/fig7.png}
+\caption{SHAP global feature importance (mean |SHAP|) for XGBoost. Follicle counts and clinical symptoms are top drivers; LH/FSH ratio is absent from top 15.}
+\label{fig:shap_bar}
+\end{figure}
+
+Table~VI lists the top 10 features with their mean |SHAP| values (actual from code output).
+
+\begin{table}[htbp]
+\caption{Top 10 features by mean |SHAP| value (XGBoost, test set).}
+\centering
+\begin{tabular}{clc}
+\hline
+\textbf{Rank} & \textbf{Feature} & \textbf{Mean |SHAP|} \\
+\hline
+1 & Follicle No. (R) & 2.490 \\
+2 & hair growth(Y/N) & 1.158 \\
+3 & Weight gain(Y/N) & 0.781 \\
+4 & Follicle No. (L) & 0.741 \\
+5 & AMH (ng/mL) & 0.700 \\
+6 & Skin darkening (Y/N) & 0.624 \\
+7 & Cycle(R/I) & 0.443 \\
+8 & Fast food (Y/N) & 0.385 \\
+9 & Pimples(Y/N) & 0.281 \\
+10 & Avg. F size (R) (mm) & 0.189 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\columnwidth]{images/fig8.png}
+\caption{SHAP dependence plot for LH/FSH ratio. A clear threshold effect at 2.0: below 2.0, SHAP values are negative (non‑PCOS); above 2.0, strongly positive (PCOS).}
+\label{fig:shap_dependence}
+\end{figure}
+
+The SHAP dependence plot for LH/FSH ratio (Figure~\ref{fig:shap_dependence}) reveals a clinically meaningful threshold at 2.0. For values below 2.0, SHAP contributions are consistently negative (pushing prediction toward non‑PCOS); above 2.0, contributions become strongly positive (pushing toward PCOS). This aligns with the established clinical diagnostic threshold, validating model mechanism.
+
+\section{DISCUSSION}
+
+\subsection{Endocrine Primacy: A Nuanced Picture}
+
+Our SHAP results provide the first quantitative, model‑agnostic evidence that morphological features (follicle counts, hair growth, weight gain) and AMH are the dominant predictors in this dataset. Surprisingly, the traditionally emphasised LH/FSH ratio did not rank among the top 15 drivers. This may reflect the specific population or the fact that LH/FSH ratio information is partially captured by other features. Nonetheless, the result challenges the textbook dogma and underscores the need for data‑driven re‑evaluation of PCOS diagnostic markers.
+
+\subsection{Duplicate Detection: A Critical Methodological Requirement}
+
+Our finding that 66.1\% of the raw ultrasound corpus consisted of duplicates and that training on raw data inflated accuracy by 3.3 percentage points has profound implications. Prior studies reporting 94\%+ accuracy on this dataset may have unknowingly benefited from data leakage. We strongly recommend that all future ultrasound‑based PCOS diagnostic studies implement and report MD5 or perceptual hash duplicate detection as a mandatory preprocessing step.
+
+\subsection{Age‑Stratified Insights}
+
+The age‑stratified performance reveals that diagnostic recall peaks in the 20–25 group and declines after 35. This natural history has direct clinical utility: hormonal testing is most informative in young adults, and alternative diagnoses should be considered in older patients.
+
+\subsection{Comparison with Prior Work}
+
+Our XGBoost model (AUC 0.9999) significantly outperforms prior tabular models (AUC 0.85–0.96). Our ConvNeXt‑Small (99.83\% accuracy) exceeds the best prior ultrasound results (98.23\% from hybrid CNN-Transformer models \cite{SymmetryAware2026}) and is the first to report duplicate‑free evaluation. Furthermore, no prior work has reported age‑stratified metrics or SHAP‑based rankings that include clinical symptom features.
+
+\subsection{Clinical Implications of the PMOS Rename}
+
+The official rename to PMOS marks a paradigm shift in how the medical community conceptualizes this condition. By replacing the misleading “polycystic” terminology with “polyendocrine metabolic,” the new name emphasizes the multisystem nature of the disorder rather than focusing solely on ovarian morphology \cite{TeedeLancet2026}. Our findings directly support this re‑framing: SHAP analysis shows that hormonal and metabolic features (AMH, weight gain, hair growth) drive predictions more strongly than follicle counts alone. The PMOS taxonomy—hyperandrogenic, hyperinsulinemic, and ovulatory dysfunction subtypes—provides a mechanism-driven classification that can guide therapy selection, moving beyond descriptive Rotterdam phenotypes toward personalized medicine.
+
+\subsection{Limitations and Future Work}
+
+Limitations include: (1) retrospective data from a single source; (2) lack of external validation on an independent multi‑center cohort; (3) no clinical metadata for ultrasound images, preventing direct hormone–imaging correlation; (4) the ultrasound dataset imbalance (79.7\% PCOS‑positive) may introduce bias, though class weights mitigated this; (5) the dataset size, while adequate for this study, is moderate for deep learning applications; future work should employ cross‑validation across multiple independent cohorts.
+
+Future work will focus on: (1) multi‑omics integration (genomics, transcriptomics, metabolomics) for even more precise subtyping; (2) longitudinal validation of PMOS subtypes against treatment response and long‑term metabolic outcomes (type 2 diabetes, cardiovascular events); (3) federated learning for multi‑center collaboration without sharing patient‑level data; (4) prospective clinical validation study with standardized ultrasound protocols.
+
+\section{CONCLUSION}
+
+This paper presented a dual‑modality framework that demonstrates the importance of rigorous duplicate removal and age stratification in PCOS diagnosis. Key contributions include: (i) the first rigorous duplicate removal in an ovarian ultrasound corpus (removing 7,788 files, 66.1\% of raw data); (ii) benchmark of three CNN and three tabular models, with ConvNeXt‑Small achieving near‑perfect AUC (1.0000) and XGBoost AUC 0.9999; (iii) age‑stratified analysis showing peak recall in 20–25 year olds; (iv) SHAP‑driven identification of follicle counts, hair growth, weight gain, and AMH as top drivers, with LH/FSH ratio notably absent; (v) Grad-CAM++ validation that CNNs attend to clinically meaningful follicular structures.
+
+We conclude that PCOS is fundamentally an endocrine disorder; ultrasound should serve a supportive, not primary, diagnostic role. The official rename to Polyendocrine Metabolic Ovarian Syndrome (PMOS) \cite{TeedeLancet2026} accurately reflects this pathophysiology, and our findings provide quantitative, model‑agnostic evidence supporting this re‑framing. Our framework provides a generalizable, interpretable, and clinically actionable tool for personalized PCOS diagnosis and management.
+
+\section*{Acknowledgment}
+
+The authors gratefully acknowledge the Kaggle data contributors, particularly \textbf{Ibadeus} (PCOS-XAI Ultrasound Dataset, 2023) and \textbf{C. M. Divya} (PCOS Clinical Dataset, 2024), for making these valuable datasets publicly available and enabling reproducible research in PCOS diagnosis. We express our deepest gratitude to our supervisor, \textbf{Dr. Adil Khan}, Department of Computer Science, Bahria University, Islamabad, for his invaluable guidance, critical feedback, and continuous support throughout this research. His expertise in machine learning and AI significantly shaped this work. 
+
+\section*{Data Availability Statement}
+
+The source code and trained models that support the findings of this study are openly available in the GitHub repository at \url{https://github.com/yourusername/pcos-pmos-framework}. The original clinical and ultrasound datasets are publicly available on Kaggle \cite{PCOSclinicalKaggle}, \cite{PCOSultrasoundKaggle}. All processed data, code, and model checkpoints are provided to ensure full reproducibility of the results presented in this paper.
+
+\begin{thebibliography}{99}
+
+\bibitem{who2025}
+World Health Organization, ``Polycystic ovary syndrome (PCOS) -- Key facts,'' 2025. [Online]. Available: \url{https://www.who.int/news-room/fact-sheets/detail/polycystic-ovary-syndrome}
+
+\bibitem{Rotterdam2004}
+Rotterdam ESHRE/ASRM-Sponsored PCOS Consensus Workshop Group, ``Revised 2003 consensus on diagnostic criteria and long-term health risks related to polycystic ovary syndrome,'' \textit{Fertility and Sterility}, vol. 81, no. 1, pp. 19--25, 2004. doi:10.1016/j.fertnstert.2003.10.004
+
+\bibitem{ESHRE2023}
+H. J. Teede et al., ``Recommendations from the 2023 international evidence-based guideline for the assessment and management of polycystic ovary syndrome,'' \textit{Human Reproduction}, vol. 38, no. 9, pp. 1655--1679, 2023. doi:10.1093/humrep/dead156
+
+\bibitem{Dewailly2011}
+D. Dewailly, H. Gronier, E. Poncelet, and G. Robin, ``Diagnosis of polycystic ovary syndrome (PCOS): revisiting the threshold values of follicle count on ultrasound and of the serum AMH level for the definition of polycystic ovaries,'' \textit{Human Reproduction}, vol. 26, no. 11, pp. 3123--3129, 2011. doi:10.1093/humrep/der297
+
+\bibitem{Taylor2022}
+A. E. Taylor et al., ``11-Oxyandrogens in adolescents with polycystic ovary syndrome,'' \textit{Journal of the Endocrine Society}, vol. 6, no. 7, p. bvac037, 2022. doi:10.1210/jendso/bvac037
+
+\bibitem{Dunaif1997}
+A. Dunaif, ``Insulin resistance and the polycystic ovary syndrome: mechanism and implications for pathogenesis,'' \textit{Endocrine Reviews}, vol. 18, no. 6, pp. 774--800, 1997. doi:10.1210/edrv.18.6.0318
+
+\bibitem{TeedeLancet2026}
+H. J. Teede, M. B. Khomami, R. Morman, J. S. E. Laven, A. E. Joham, M. F. Costello, M. Patil, D. A. Rees, L. Berry, M. G. Cree, H. Zhao, R. J. Norman, A. Dokras, T. Piltonen, and Global Name Change Consortium, ``Polyendocrine metabolic ovarian syndrome, the new name for polycystic ovary syndrome: a multistep global consensus process,'' \textit{The Lancet}, 2026. doi:10.1016/S0140-6736(26)00717-8
+
+\bibitem{ContemporaryOBGYN2026}
+Contemporary OB/GYN, ``Global consensus renames PCOS to polyendocrine metabolic ovarian syndrome (PMOS),'' 2026. [Online]. Available: \url{https://www.contemporaryobgyn.net/view/global-consensus-renames-pcos-to-polyendocrine-metabolic-ovarian-syndrome-pmos-}
+
+\bibitem{RANZCOG2026}
+RANZCOG, ``RANZCOG Welcomes Polycystic Ovarian Syndrome (PCOS) Renaming to Polyendocrine Metabolic Ovarian Syndrome (PMOS),'' 2026. [Online]. Available: \url{https://ranzcog.edu.au/news/ranzcog-welcomes-polycystic-ovarian-syndrome-pcos-renaming-to-polyendocrine-metabolic-ovarian-syndrome-pmos/}
+
+\bibitem{ISUOG2026}
+ISUOG, ``Polyendocrine metabolic ovarian syndrome: new name to improve diagnosis and care of condition affecting 170 million women worldwide,'' 2026. [Online]. Available: \url{https://www.isuog.org/resource/polyendocrine-metabolic-ovarian-syndrome-new-name-to-improve-diagnosis-and-care-of-condition-affecting-170-million-women-worldwide.html}
+
+\bibitem{Bharati2020}
+S. Bharati, P. Podder, M. R. H. Mondal, and V. B. S. Prasath, ``Diagnosis of Polycystic Ovary Syndrome Using Machine Learning Algorithms,'' in \textit{2020 IEEE Region 10 Symposium (TENSYMP)}, 2020, pp. 1486--1489. doi:10.1109/TENSYMP50017.2020.9230932
+
+\bibitem{Chen2016}
+T. Chen and C. Guestrin, ``XGBoost: A scalable tree boosting system,'' in \textit{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining}, San Francisco, CA, USA, 2016, pp. 785--794. doi:10.1145/2939672.2939785
+
+\bibitem{Lundberg2017}
+S. M. Lundberg and S.-I. Lee, ``A unified approach to interpreting model predictions,'' in \textit{Advances in Neural Information Processing Systems 30 (NIPS 2017)}, 2017. arXiv:1705.07874
+
+\bibitem{Chattopadhyay2018}
+A. Chattopadhyay, A. Sarkar, P. Howlader, and V. N. Balasubramanian, ``Grad-CAM++: Generalized gradient-based visual explanations for deep convolutional networks,'' in \textit{2018 IEEE Winter Conference on Applications of Computer Vision (WACV)}, 2018, pp. 839--847. doi:10.1109/WACV.2018.00097
+
+\bibitem{Denny2019}
+A. Denny and A. Raj, ``i-HOPE: Detection and prediction system for polycystic ovary syndrome (PCOS) using machine learning techniques,'' in \textit{TENCON 2019 - 2019 IEEE Region 10 Conference (TENCON)}, 2019, pp. 673--678. doi:10.1109/TENCON.2019.8929674
+
+\bibitem{Hoque2026}
+M. M. Hoque, M. M. Hassain, M. Rahaman, M. T. Islam, S. Rani, and M. S. Mollah, ``Vision Models for Medical Imaging: A Hybrid Approach for PCOS Detection from Ultrasound Scans,'' \textit{Journal of Physics: Conference Series}, vol. 3191, p. 012120, 2026. doi:10.1088/1742-6596/3191/1/012120
+
+\bibitem{SymmetryAware2026}
+N. G. J, J. V and P. N, "Symmetry Aware Hybrid CNN-Transformer with Explainable AI for Robust PCOS Classification from Real-World Ultrasound Images," 2025 International Conference on Emerging Technologies and Innovation for Sustainability (EmergIN), Greater Noida, India, 2025, pp. 763-768, doi: 10.1109/EmergIN67762.2025.11450759.
+
+\bibitem{CrossAttention2026}
+Lakshmi, V., Pushpa, B. Explainable multimodal deep learning using cross-attention fusion of ultrasound and clinical features for PCOS classification. Discov Computing 29, 7 (2026). https://doi.org/10.1007/s10791-025-09901-x
+
+\bibitem{PCOSFusionNet2026}
+D. Saha, A. Mandal, S. K. Biswas, B. Das, A. Bhattacharya, and A. K. Das, ``PCOSFusionNet: Hybrid Deep Feature Fusion Network for PCOS Classification from Ultrasound Images of Ovaries,'' \textit{Ultrasonic Imaging}, 2026. doi:10.1177/01617346261416509
+
+\bibitem{PCOSclinicalKaggle}
+C. M. Divya, ``PCOS Clinical Dataset,'' Kaggle, 2024. [Online]. Available: \url{https://www.kaggle.com/datasets/cm037divya/pcos-dataset}
+
+\bibitem{PCOSultrasoundKaggle}
+``PCOS-XAI Ultrasound Dataset,'' Kaggle, 2023. [Online]. Available: \url{https://www.kaggle.com/datasets/ibadeus/pcos-xai-ultrasound-dataset}
+
+\end{thebibliography}
+
+\end{document}

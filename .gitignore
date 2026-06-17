@@ -1,0 +1,17 @@
+# Datasets (too large, link to Kaggle instead)
+data/
+*.csv
+*.jpg
+*.png
+*.jpeg
+*.pth          # trained model weights (too large)
+*.zip
+
+# Python cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
